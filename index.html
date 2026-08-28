@@ -95,15 +95,15 @@
   <div class="card">
     <div class="step-num">Step 1</div>
     <h2><span class="n">1</span> About you</h2>
-    <label class="first">Full name</label><input type="text" id="f-name" placeholder="Amit Chougule">
-    <label>Target job title</label><input type="text" id="f-title" placeholder="Senior Software Engineer">
+    <label class="first">Full name</label><input type="text" id="f-name" placeholder="Amit Chougule" value="Amit Chougule">
+    <label>Target job title</label><input type="text" id="f-title" placeholder="Senior Software Engineer" value="Software Developer">
     <div class="row3">
-      <div><label>Email</label><input type="email" id="f-email" placeholder="you@email.com"></div>
-      <div><label>Phone</label><input type="tel" id="f-phone" placeholder="667-372-8157"></div>
-      <div><label>Location</label><input type="text" id="f-location" placeholder="Reading, PA"></div>
+      <div><label>Email</label><input type="email" id="f-email" placeholder="you@email.com" value="amitchouguleack@gmail.com"></div>
+      <div><label>Phone</label><input type="tel" id="f-phone" placeholder="667-372-8157" value="667-372-8157"></div>
+      <div><label>Location</label><input type="text" id="f-location" placeholder="Reading, PA" value="Pennsylvania"></div>
     </div>
     <label>LinkedIn URL <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
-    <input type="text" id="f-linkedin" placeholder="linkedin.com/in/you">
+    <input type="text" id="f-linkedin" placeholder="linkedin.com/in/you" value="linkedin.com/in/softwaree-amitc/">
   </div>
 
   <div class="card">
@@ -117,7 +117,7 @@
   <div class="card">
     <div class="step-num">Step 3</div>
     <h2><span class="n">3</span> School</h2>
-    <label class="first">School name</label><input type="text" id="f-school" placeholder="XYZ University">
+    <label class="first">School name</label><input type="text" id="f-school" placeholder="XYZ University" value="S.M. Lohia College">
     <label>Degree</label><input type="text" id="f-degree" placeholder="B.S. Computer Science">
     <label>Grad year / certifications <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
     <input type="text" id="f-eduextra" placeholder="2012 · AWS Certified Solutions Architect">
@@ -239,12 +239,31 @@ function applyProfile(p){
   document.getElementById('exp-list').innerHTML = '';
   if(p.exps && p.exps.length){ p.exps.forEach(addExp); } else { addExp(); }
 }
+// Default work history pre-filled on first visit to any device, so there's
+// nothing to paste in before generating a resume. Fully editable — and once
+// edited, the change is auto-saved and takes over from here on.
+const DEFAULT_EXP = {
+  title: 'Software Developer',
+  company: 'Santander Consumer Bank',
+  dates: '03/2022 – Present',
+  bullets: [
+    'Designed, developed, and deployed scalable RESTful APIs and microservices using C#, .NET Core, and Java/Spring Boot to support high-throughput, secure financial transactions.',
+    'Built and maintained front-end applications (React, TypeScript, JavaScript) tightly integrated with back-end services, delivering responsive, production-grade web applications.',
+    'Designed and optimized SQL Server database schemas, indexes, and stored procedures, improving query performance and reducing data retrieval time by over 30%.',
+    'Deployed and supported containerized applications using Docker and Kubernetes on AWS and Linux-based infrastructure, supporting reliable, high-availability production environments.',
+    'Drove adoption of Git-based CI/CD pipelines, accelerating delivery cycles and reducing production deployment risk in line with modern DevOps practices.',
+    'Collaborated within cross-functional Agile/Scrum teams, participating in code reviews and enforcing enterprise-grade software engineering standards.',
+    'Troubleshot and resolved complex production issues, driving root-cause analysis and preventative improvements that increased application uptime and system resilience.',
+    'Enhanced system security by implementing modern authentication and encryption standards across all internal API endpoints, protecting sensitive system boundaries.',
+    'Worked across MySQL, PostgreSQL, and Entity Framework with a focus on query optimization, database normalization, and enterprise architecture using JIRA, Postman, GitHub, and Visual Studio/VS Code.'
+  ].join('\n')
+};
 function loadProfile(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){ applyProfile(JSON.parse(raw)); return; }
   }catch(e){}
-  addExp();
+  addExp(DEFAULT_EXP);
 }
 function saveProfile(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectProfile())); showSavedBadge(); }catch(e){}
