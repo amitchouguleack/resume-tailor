@@ -217,6 +217,9 @@ function collectProfile(){
     school: document.getElementById('f-school').value,
     degree: document.getElementById('f-degree').value,
     eduextra: document.getElementById('f-eduextra').value,
+    company: document.getElementById('f-company').value,
+    role: document.getElementById('f-role').value,
+    jd: document.getElementById('f-jd').value,
     exps
   };
 }
@@ -230,6 +233,9 @@ function applyProfile(p){
   document.getElementById('f-school').value = p.school||'';
   document.getElementById('f-degree').value = p.degree||'';
   document.getElementById('f-eduextra').value = p.eduextra||'';
+  document.getElementById('f-company').value = p.company||'';
+  document.getElementById('f-role').value = p.role||'';
+  document.getElementById('f-jd').value = p.jd||'';
   document.getElementById('exp-list').innerHTML = '';
   if(p.exps && p.exps.length){ p.exps.forEach(addExp); } else { addExp(); }
 }
@@ -282,12 +288,20 @@ function norm(s){ return s.toLowerCase().trim(); }
 function extractKeywords(jd){
   const jdLower = ' ' + jd.toLowerCase() + ' ';
   const found = new Set();
+  const foundLower = new Set(); // case-insensitive guard so "AWS" and "aws" don't both show up as separate chips
+
+  function add(term){
+    const key = term.toLowerCase();
+    if(foundLower.has(key)) return;
+    foundLower.add(key);
+    found.add(term);
+  }
 
   // dictionary matches (multi-word first)
   SKILL_DICT.slice().sort((a,b)=>b.length-a.length).forEach(term=>{
     const pat = ' ' + term.toLowerCase() + ' ';
     if(jdLower.includes(pat) || jdLower.includes(term.toLowerCase()+',') || jdLower.includes(term.toLowerCase()+'.') || jdLower.includes(term.toLowerCase()+')') ){
-      found.add(term);
+      add(term);
     }
   });
 
@@ -295,10 +309,10 @@ function extractKeywords(jd){
   const caps = jd.match(/\b[A-Z][a-zA-Z0-9+.#]{1,14}\b/g) || [];
   caps.forEach(w=>{
     const lw = w.toLowerCase();
-    if(STOPWORDS.has(lw) || lw.length<2) return;
+    if(STOPWORDS.has(lw) || lw.length<3) return;
     if(/^(the|and|for|with|our|you|will|this|are|role|job|team)$/.test(lw)) return;
-    if(w === w.toUpperCase() && w.length<=6){ found.add(w); return; } // acronyms: FHIR, HIPAA, SQL, AWS
-    if(/[A-Z].*[A-Z]/.test(w)){ found.add(w); return; } // CamelCase
+    if(w === w.toUpperCase() && w.length<=6){ add(w); return; } // acronyms: FHIR, HIPAA, SQL, AWS
+    if(/[A-Z].*[A-Z]/.test(w)){ add(w); return; } // CamelCase
   });
 
   // frequent nouns not already captured, as fallback keywords
@@ -308,7 +322,7 @@ function extractKeywords(jd){
     freq[w] = (freq[w]||0)+1;
   });
   Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,10).forEach(([w,c])=>{
-    if(c>=2) found.add(w);
+    if(c>=2) add(w);
   });
 
   return [...found].slice(0,28);
@@ -513,7 +527,11 @@ document.querySelectorAll('.dl-row button').forEach(btn=>{
         pdf.setFontSize(fs);
         let total = 0;
         bodyLines.forEach(l=>{ total += pdf.splitTextToSize(l||' ', maxWidth).length; });
-        return total * (fs*1.3) + 10;
+        // +10 general slack, +26 more when there's a name row: it renders in a
+        // bigger font with extra spacing above/below its divider rule that a
+        // flat per-line estimate wouldn't otherwise account for.
+        const nameRowSlack = (doc==='resume') ? 26 : 0;
+        return total * (fs*1.3) + 10 + nameRowSlack;
       }
 
       // Re-trim to one page: walk the same bullet-cap ladder used to build
@@ -540,7 +558,7 @@ document.querySelectorAll('.dl-row button').forEach(btn=>{
       let y = margin;
       lines.forEach((line, idx)=>{
         const isHeader = isSectionHeader(line, idx);
-        const isName = idx===0;
+        const isName = idx===0 && doc==='resume';
         pdf.setFont('helvetica', (isHeader||isName) ? 'bold' : 'normal');
         pdf.setFontSize(isName ? fontSize+7 : (isHeader ? fontSize+1 : fontSize));
         pdf.setTextColor(isName || isHeader ? NAVY : INK);
@@ -566,7 +584,8 @@ document.querySelectorAll('.dl-row button').forEach(btn=>{
       const bodyLines = text.split('\n');
       const htmlBody = bodyLines.map((l,idx)=>{
         const isHeader = idx>0 && l === l.toUpperCase() && l.trim().length>0 && l.trim().length<60 && /[A-Z]/.test(l);
-        const style = idx===0
+        const isName = idx===0 && doc==='resume';
+        const style = isName
           ? "font-size:20pt;font-weight:bold;color:#1a3a6e;letter-spacing:0.5pt;margin:0 0 6pt 0;border-bottom:1.5pt solid #1a3a6e;padding-bottom:6pt;"
           : isHeader
             ? "font-size:12pt;font-weight:bold;color:#1a3a6e;letter-spacing:0.5pt;margin:12pt 0 4pt 0;border-bottom:0.75pt solid #1a3a6e;padding-bottom:2pt;"
