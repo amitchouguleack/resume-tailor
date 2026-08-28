@@ -140,9 +140,8 @@
   <div class="card">
     <div class="step-num">Step 4</div>
     <h2><span class="n">4</span> The job you want</h2>
-    <label class="first">Company name</label><input type="text" id="f-company" placeholder="Acme Health Systems">
-    <label>Job title (as posted)</label><input type="text" id="f-role" placeholder="Senior Software Developer">
-    <label>Paste the full job description here</label>
+    <p class="hint">Just paste the job posting or add a screenshot — the company name and job title get pulled out of it automatically. Nothing else to fill in here.</p>
+    <label class="first">Paste the full job description here</label>
     <textarea id="f-jd" style="min-height:170px" placeholder="Paste the entire job posting here... or add a screenshot below"></textarea>
     <button class="add" id="screenshot-btn" type="button">📸 Or add a screenshot of the job posting</button>
     <input type="file" id="screenshot-file" accept="image/*" style="display:none;">
@@ -235,8 +234,6 @@ function collectProfile(){
     school: document.getElementById('f-school').value,
     degree: document.getElementById('f-degree').value,
     eduextra: document.getElementById('f-eduextra').value,
-    company: document.getElementById('f-company').value,
-    role: document.getElementById('f-role').value,
     jd: document.getElementById('f-jd').value,
     exps
   };
@@ -251,8 +248,6 @@ function applyProfile(p){
   document.getElementById('f-school').value = p.school||'';
   document.getElementById('f-degree').value = p.degree||'';
   document.getElementById('f-eduextra').value = p.eduextra||'';
-  document.getElementById('f-company').value = p.company||'';
-  document.getElementById('f-role').value = p.role||'';
   document.getElementById('f-jd').value = p.jd||'';
   document.getElementById('exp-list').innerHTML = '';
   if(p.exps && p.exps.length){ p.exps.forEach(addExp); } else { addExp(); }
@@ -630,6 +625,48 @@ jdTextarea.addEventListener('drop', (e)=>{
   if(file && file.type && file.type.startsWith('image/')) ocrImageIntoJD(file);
 });
 
+// Best-effort pull of the job title and company straight out of the pasted/
+// OCR'd posting text, so there's nothing to type in separately. Not perfect —
+// falls back to a plain placeholder the cover letter still reads fine with.
+function guessRoleAndCompany(jd, fallbackTitle){
+  const lines = jd.split('\n').map(l=>l.trim()).filter(Boolean);
+  let role = '';
+  let company = '';
+
+  // The very first line of a posting or screenshot is almost always the job
+  // title, as long as it actually looks like one (short, not a full sentence).
+  if(lines[0] && lines[0].length <= 80 && !/[.!?]$/.test(lines[0])){
+    role = lines[0].replace(/^(job title|position|role)\s*[:\-]\s*/i, '');
+  }
+
+  const companyPatterns = [
+    /\bCompany\s*:\s*([A-Z][A-Za-z0-9&.,'\- ]{1,45})/,
+    /\bAbout\s+([A-Z][A-Za-z0-9&.,'\- ]{1,45}?)\s*[:\n]/,
+    /^([A-Z][A-Za-z0-9&.,'\- ]{1,45}?)\s+is\s+(?:looking|seeking|hiring)/m,
+    /\b[Jj]oin\s+([A-Z][A-Za-z0-9&.,'\- ]{1,45}?)(?:[.,!\n]|\s+(?:as|and|team))/,
+    /\bat\s+([A-Z][A-Za-z0-9&.,'\- ]{1,45}?)(?:[.,!\n]|\s+(?:is|are|we|has|located|in)\b)/
+  ];
+  for(const re of companyPatterns){
+    const m = jd.match(re);
+    if(m && m[1] && m[1].trim().length>1){ company = m[1].trim(); break; }
+  }
+
+  // Common screenshot/listing layout: title on line 1, company alone on
+  // line 2 (LinkedIn, Indeed, etc. all format postings this way).
+  if(!company && lines[1]){
+    const line2 = lines[1];
+    const notACompany = /^(remote|hybrid|on-?site|full-?time|part-?time|contract|contractor|internship|temporary|permanent|\$[\d,]+.*)$/i;
+    if(/^[A-Z][A-Za-z0-9&.,'\- ]{1,45}$/.test(line2) && !notACompany.test(line2.trim())){
+      company = line2.trim();
+    }
+  }
+
+  return {
+    role: role || fallbackTitle || '',
+    company: company || ''
+  };
+}
+
 // ---------- the one big button ----------
 document.getElementById('make-btn').addEventListener('click', ()=>{
   const jd = document.getElementById('f-jd').value.trim();
@@ -640,8 +677,9 @@ document.getElementById('make-btn').addEventListener('click', ()=>{
   status.textContent = '';
 
   lastProfile = p;
-  lastCompany = document.getElementById('f-company').value.trim() || '[Company Name]';
-  lastRoleTitle = document.getElementById('f-role').value.trim() || p.title || '[Role Title]';
+  const guessed = guessRoleAndCompany(jd, p.title);
+  lastCompany = guessed.company || '[Company Name]';
+  lastRoleTitle = guessed.role || '[Role Title]';
 
   currentKeywords = extractKeywords(jd);
   const allBulletText = norm(p.exps.map(e=>e.title+' '+e.bullets).join(' '));
