@@ -129,7 +129,11 @@
     <label class="first">Company name</label><input type="text" id="f-company" placeholder="Acme Health Systems">
     <label>Job title (as posted)</label><input type="text" id="f-role" placeholder="Senior Software Developer">
     <label>Paste the full job description here</label>
-    <textarea id="f-jd" style="min-height:170px" placeholder="Paste the entire job posting here..."></textarea>
+    <textarea id="f-jd" style="min-height:170px" placeholder="Paste the entire job posting here... or add a screenshot below"></textarea>
+    <button class="add" id="screenshot-btn" type="button">📸 Or add a screenshot of the job posting</button>
+    <input type="file" id="screenshot-file" accept="image/*" style="display:none;">
+    <div id="ocr-status" class="hint" style="margin:8px 0 0;"></div>
+    <p class="hint" style="margin-top:6px;">You can add as many screenshots as you need — each one gets read and added below. Or just paste an image (Ctrl+V) straight into the box above. Nothing is ever uploaded — the screenshot is read right here in your browser.</p>
   </div>
 
   <div class="big-cta-wrap">
@@ -472,6 +476,107 @@ function renderChips(){
   document.getElementById('match-pct').textContent = pct + '%';
   document.getElementById('match-bar').style.width = pct + '%';
 }
+
+// ---------- screenshot -> job description (OCR, runs fully in the browser) ----------
+let tesseractLoadPromise = null;
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(tesseractLoadPromise) return tesseractLoadPromise;
+  tesseractLoadPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = ()=>resolve();
+    s.onerror = ()=>{ tesseractLoadPromise = null; reject(new Error("Couldn't load the screenshot reader — check your connection and try again.")); };
+    document.head.appendChild(s);
+  });
+  return tesseractLoadPromise;
+}
+
+// Downscale huge screenshots (phone screenshots especially) before OCR so it
+// stays fast and doesn't choke on memory.
+function loadImageToCanvas(fileOrBlob, maxDim){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(fileOrBlob);
+    img.onload = ()=>{
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      resolve(canvas);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error("Couldn't read that image file.")); };
+    img.src = url;
+  });
+}
+
+let ocrBusy = false;
+async function ocrImageIntoJD(fileOrBlob){
+  const statusEl = document.getElementById('ocr-status');
+  if(ocrBusy){ statusEl.textContent = 'Still reading the last screenshot — one sec...'; return; }
+  ocrBusy = true;
+  statusEl.textContent = 'Loading the screenshot reader (first time only)...';
+  try{
+    await loadTesseract();
+    statusEl.textContent = 'Reading screenshot... 0%';
+    const canvas = await loadImageToCanvas(fileOrBlob, 2200);
+    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+      logger: (m)=>{
+        if(m.status === 'recognizing text'){
+          statusEl.textContent = 'Reading screenshot... ' + Math.round((m.progress||0) * 100) + '%';
+        }
+      }
+    });
+    const cleaned = (text||'').trim();
+    if(!cleaned){
+      statusEl.textContent = "Couldn't find readable text in that screenshot — try a clearer/bigger one, or paste the text instead.";
+      return;
+    }
+    const jdEl = document.getElementById('f-jd');
+    jdEl.value = (jdEl.value.trim() ? jdEl.value.trim() + '\n\n' : '') + cleaned;
+    saveProfileSoon();
+    statusEl.textContent = '✓ Added to the job description above. Screenshots aren\'t always perfect — give it a quick look.';
+    setTimeout(()=>{ if(statusEl.textContent.startsWith('✓')) statusEl.textContent = ''; }, 7000);
+  }catch(err){
+    statusEl.textContent = (err && err.message) || 'Something went wrong reading that screenshot. Try again, or just paste the text instead.';
+  }finally{
+    ocrBusy = false;
+  }
+}
+
+document.getElementById('screenshot-btn').addEventListener('click', ()=>{
+  document.getElementById('screenshot-file').click();
+});
+document.getElementById('screenshot-file').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  e.target.value = ''; // allow re-selecting the same file for another screenshot
+  if(file) ocrImageIntoJD(file);
+});
+const jdTextarea = document.getElementById('f-jd');
+jdTextarea.addEventListener('paste', (e)=>{
+  const items = e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  for(const item of items){
+    if(item.type && item.type.startsWith('image/')){
+      e.preventDefault();
+      const blob = item.getAsFile();
+      if(blob) ocrImageIntoJD(blob);
+      return;
+    }
+  }
+});
+jdTextarea.addEventListener('dragover', (e)=>{ e.preventDefault(); });
+jdTextarea.addEventListener('drop', (e)=>{
+  e.preventDefault();
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file && file.type && file.type.startsWith('image/')) ocrImageIntoJD(file);
+});
 
 // ---------- the one big button ----------
 document.getElementById('make-btn').addEventListener('click', ()=>{
