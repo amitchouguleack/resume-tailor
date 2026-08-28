@@ -79,14 +79,15 @@
   .note{ font-size:13.5px; color:var(--muted); margin-top:14px; border-top:1px solid var(--line); padding-top:12px; }
   .badge-zero{ font-family:var(--mono); font-size:12px; color:var(--blue-bright); border:1px solid var(--blue-bright); border-radius:10px; padding:3px 9px; display:inline-block; margin-left:10px; vertical-align:middle; }
   .step-num{ font-family:var(--mono); font-size:14px; color:var(--blue-bright); font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
+  #saved-badge{ font-family:var(--mono); font-size:13px; color:#1a7a3e; font-weight:700; opacity:0; transition:opacity .3s; margin-left:10px; }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="eyebrow">Runs entirely in your browser · $0.00 · no account, no server</div>
+  <div class="eyebrow">Runs entirely in your browser · $0.00 · no account, no server<span id="saved-badge">✓ Saved on this device</span></div>
   <h1>Resume Tailor<span class="badge-zero">zero-cost</span></h1>
-  <p>Fill in the boxes below. Paste the job post. Click the ONE big button. Get a black-and-blue, one-page, ATS-friendly resume and cover letter — as PDF, Word, and Text.</p>
+  <p>Fill in the boxes below. Paste the job post. Click the ONE big button. Get a black-and-blue, one-page, ATS-friendly resume and cover letter — as PDF, Word, and Text. Everything you type is saved on this device automatically, so you won't have to re-enter it next time.</p>
 </header>
 
 <main>
@@ -232,16 +233,42 @@ function applyProfile(p){
   document.getElementById('exp-list').innerHTML = '';
   if(p.exps && p.exps.length){ p.exps.forEach(addExp); } else { addExp(); }
 }
-async function loadProfile(){
+function loadProfile(){
   try{
-    const res = await window.storage.get(STORAGE_KEY, false);
-    if(res && res.value){ applyProfile(JSON.parse(res.value)); return; }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ applyProfile(JSON.parse(raw)); return; }
   }catch(e){}
   addExp();
 }
-async function saveProfile(){
-  try{ await window.storage.set(STORAGE_KEY, JSON.stringify(collectProfile()), false); }catch(e){}
+function saveProfile(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectProfile())); showSavedBadge(); }catch(e){}
 }
+let saveTimer = null;
+function saveProfileSoon(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveProfile, 400);
+}
+let badgeTimer = null;
+function showSavedBadge(){
+  const el = document.getElementById('saved-badge');
+  if(!el) return;
+  el.style.opacity = '1';
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(()=>{ el.style.opacity = '0'; }, 1500);
+}
+// Auto-save everything as it's typed — no save button needed. Uses event
+// delegation so it also covers job blocks added/removed later.
+document.addEventListener('input', (e)=>{
+  if(e.target.closest('main')) saveProfileSoon();
+});
+document.addEventListener('change', (e)=>{
+  if(e.target.closest('main')) saveProfileSoon();
+});
+document.getElementById('add-exp').addEventListener('click', saveProfileSoon);
+document.getElementById('exp-list').addEventListener('click', (e)=>{
+  if(e.target.classList.contains('remove')) saveProfileSoon();
+});
+
 loadProfile();
 
 // ---------- keyword extraction ----------
