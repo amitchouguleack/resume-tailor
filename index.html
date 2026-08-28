@@ -338,6 +338,40 @@ function highlight(text, terms){
   return out;
 }
 
+// Builds the resume text at a given per-role bullet cap. Used both to render
+// the default preview and to progressively trim content so the PDF/Word/Text
+// exports all stay a genuine one page.
+function buildResumeText(p, scoredExps, selected, capFirst, capRest){
+  let lines = [];
+  lines.push(p.name.toUpperCase());
+  lines.push([p.title, p.location].filter(Boolean).join('  |  '));
+  lines.push([p.email, p.phone, p.linkedin].filter(Boolean).join('  |  '));
+  lines.push('');
+  lines.push('CORE SKILLS');
+  lines.push(selected.join('  •  '));
+  lines.push('');
+  lines.push('EXPERIENCE');
+  scoredExps.forEach((e,i)=>{
+    if(!e.title && !e.company) return;
+    lines.push(`${e.title}${e.company? ' — '+e.company:''}${e.dates? '   ('+e.dates+')':''}`);
+    const cap = i===0 ? capFirst : capRest;
+    e.bullets.slice(0, cap).forEach(b=> lines.push('•  '+b.text));
+    lines.push('');
+  });
+  const eduLine = [p.degree, p.school].filter(Boolean).join(', ');
+  if(eduLine || p.eduextra){
+    lines.push('EDUCATION');
+    if(eduLine) lines.push(eduLine);
+    if(p.eduextra) lines.push(p.eduextra);
+  }
+  return lines.join('\n').trim();
+}
+
+// Approximate lines a one-page letter resume can hold at a readable size
+// (matches the PDF's usable height at ~11pt). Used to decide how many
+// bullets per role we can afford to keep.
+const ONE_PAGE_LINE_BUDGET = 46;
+
 document.getElementById('generate-btn').addEventListener('click', ()=>{
   const p = collectProfile();
   const jd = document.getElementById('f-jd').value.trim();
@@ -357,28 +391,17 @@ document.getElementById('generate-btn').addEventListener('click', ()=>{
     return {...e, bullets: scored};
   });
 
-  let resumeLines = [];
-  resumeLines.push(p.name.toUpperCase());
-  resumeLines.push([p.title, p.location].filter(Boolean).join('  |  '));
-  resumeLines.push([p.email, p.phone, p.linkedin].filter(Boolean).join('  |  '));
-  resumeLines.push('');
-  resumeLines.push('CORE SKILLS');
-  resumeLines.push(selected.join('  •  '));
-  resumeLines.push('');
-  resumeLines.push('EXPERIENCE');
-  scoredExps.forEach(e=>{
-    if(!e.title && !e.company) return;
-    resumeLines.push(`${e.title}${e.company? ' — '+e.company:''}${e.dates? '   ('+e.dates+')':''}`);
-    e.bullets.forEach(b=> resumeLines.push('•  '+b.text));
-    resumeLines.push('');
-  });
-  const eduLine = [p.degree, p.school].filter(Boolean).join(', ');
-  if(eduLine || p.eduextra){
-    resumeLines.push('EDUCATION');
-    if(eduLine) resumeLines.push(eduLine);
-    if(p.eduextra) resumeLines.push(p.eduextra);
+  // Trim bullets-per-role until the resume fits comfortably on one page,
+  // always favoring the highest keyword-scored bullets and never dropping
+  // below one bullet per included role.
+  const capSteps = [[5,4],[4,3],[3,2],[2,1],[1,1]];
+  let resumeText = buildResumeText(p, scoredExps, selected, capSteps[0][0], capSteps[0][1]);
+  for(const [capFirst, capRest] of capSteps){
+    resumeText = buildResumeText(p, scoredExps, selected, capFirst, capRest);
+    if(resumeText.split('\n').length <= ONE_PAGE_LINE_BUDGET) break;
   }
-  const resumeText = resumeLines.join('\n').trim();
+  window.__scoredExps = scoredExps;
+  window.__profile = p;
 
   const topSkills = selected.slice(0,5);
   const today = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
@@ -442,56 +465,86 @@ document.querySelectorAll('.dl-row button').forEach(btn=>{
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({unit:'pt', format:'letter'});
       const margin = 50;
-      const maxWidth = 612 - margin*2;
-      const lines = text.split('\n');
+      const pageW = 612, pageH = 792;
+      const maxWidth = pageW - margin*2;
+      const NAVY = '#1a3a6e', INK = '#111418';
+      const usableHeight = pageH - margin*2;
+      const HEADER_RE = /^[A-Z0-9 ,.'&|-]+$/;
 
-      // fit to one page: estimate needed font size
-      let fontSize = 11, lineH = 14;
-      const usableHeight = 792 - margin*2;
-      function estimateLines(fs){
+      function isSectionHeader(line, idx){
+        return idx>0 && HEADER_RE.test(line) && line.trim().length>0 && line===line.toUpperCase() && line.trim().length<60;
+      }
+      function measure(fs, bodyLines){
         pdf.setFontSize(fs);
         let total = 0;
-        lines.forEach(l=> total += pdf.splitTextToSize(l||' ', maxWidth).length);
-        return total;
+        bodyLines.forEach(l=>{ total += pdf.splitTextToSize(l||' ', maxWidth).length; });
+        return total * (fs*1.3) + 10;
       }
-      while(fontSize > 8.5){
-        const est = estimateLines(fontSize);
-        if(est * (fontSize*1.28) <= usableHeight) break;
+
+      // Re-trim to one page: walk the same bullet-cap ladder used to build
+      // the preview, but re-measure against real PDF font metrics so this
+      // export is guaranteed to fit rather than just estimated.
+      let pdfText = text;
+      if(doc==='resume' && window.__scoredExps && window.__profile){
+        const capSteps = [[5,4],[4,3],[3,2],[2,1],[1,1]];
+        for(const [capFirst, capRest] of capSteps){
+          const candidate = buildResumeText(window.__profile, window.__scoredExps, [...currentSelected], capFirst, capRest);
+          pdfText = candidate;
+          if(measure(10.5, candidate.split('\n')) <= usableHeight) break;
+        }
+      }
+      const lines = pdfText.split('\n');
+
+      // shrink font as a last-resort safety net if still tight
+      let fontSize = 10.5;
+      while(fontSize > 8.5 && measure(fontSize, lines) > usableHeight){
         fontSize -= 0.5;
       }
-      lineH = fontSize * 1.28;
+      const lineH = fontSize * 1.3;
 
       let y = margin;
-      let firstLine = true;
       lines.forEach((line, idx)=>{
-        const isHeader = /^[A-Z0-9 ,.'&|—-]+$/.test(line) && line.trim().length>0 && line === line.toUpperCase() && line.trim().length < 60;
-        pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
-        pdf.setFontSize(idx===0 ? fontSize+3 : (isHeader ? fontSize+1 : fontSize));
-        pdf.setTextColor(isHeader || idx===0 ? '#1a3a6e' : '#111418');
+        const isHeader = isSectionHeader(line, idx);
+        const isName = idx===0;
+        pdf.setFont('helvetica', (isHeader||isName) ? 'bold' : 'normal');
+        pdf.setFontSize(isName ? fontSize+7 : (isHeader ? fontSize+1 : fontSize));
+        pdf.setTextColor(isName || isHeader ? NAVY : INK);
         const wrapped = pdf.splitTextToSize(line || ' ', maxWidth);
         wrapped.forEach(w=>{
-          if(y > 792 - margin){ pdf.addPage(); y = margin; }
+          if(y > pageH - margin){ pdf.addPage(); y = margin; }
           pdf.text(w, margin, y);
-          y += lineH;
+          y += (isName ? lineH+3 : lineH);
         });
-        if(idx===0) y += 2;
+        if(isName){
+          y += 4;
+          pdf.setDrawColor(NAVY); pdf.setLineWidth(1.3);
+          pdf.line(margin, y, pageW-margin, y);
+          y += lineH*0.7;
+        } else if(isHeader){
+          pdf.setDrawColor(NAVY); pdf.setLineWidth(0.6);
+          pdf.line(margin, y-lineH*0.75, pageW-margin, y-lineH*0.75);
+        }
       });
       pdf.save(`${name}_${label}.pdf`);
     }
     else if(fmt==='word'){
       const bodyLines = text.split('\n');
       const htmlBody = bodyLines.map((l,idx)=>{
-        const isHeader = l === l.toUpperCase() && l.trim().length>0 && l.trim().length<60 && /[A-Z]/.test(l);
+        const isHeader = idx>0 && l === l.toUpperCase() && l.trim().length>0 && l.trim().length<60 && /[A-Z]/.test(l);
         const style = idx===0
-          ? "font-size:18pt;font-weight:bold;color:#1a3a6e;margin:0 0 4pt 0;"
+          ? "font-size:20pt;font-weight:bold;color:#1a3a6e;letter-spacing:0.5pt;margin:0 0 6pt 0;border-bottom:1.5pt solid #1a3a6e;padding-bottom:6pt;"
           : isHeader
-            ? "font-size:12pt;font-weight:bold;color:#1a3a6e;margin:10pt 0 3pt 0;"
-            : "font-size:11pt;color:#111418;margin:0 0 4pt 0;";
+            ? "font-size:12pt;font-weight:bold;color:#1a3a6e;letter-spacing:0.5pt;margin:12pt 0 4pt 0;border-bottom:0.75pt solid #1a3a6e;padding-bottom:2pt;"
+            : "font-size:10.5pt;color:#111418;margin:0 0 4pt 0;";
         return `<p style="${style}">${escapeHtml(l)||'&nbsp;'}</p>`;
       }).join('');
       const source = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>${label}</title>
-      <style>body{font-family:Calibri,Arial,sans-serif;}</style></head>
+      <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+      <style>
+        @page{ margin:0.6in; }
+        body{ font-family:Calibri,Arial,sans-serif; line-height:1.35; }
+      </style></head>
       <body>${htmlBody}</body></html>`;
       download(`${name}_${label}.doc`, new Blob(['\ufeff', source], {type:'application/msword'}));
     }
