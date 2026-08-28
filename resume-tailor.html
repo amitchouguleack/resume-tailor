@@ -68,7 +68,8 @@
   details.adjust summary::before{ content:'☰ '; }
   details.adjust[open] summary::before{ content:'▾ '; }
   .output{ display:none; } .output.show{ display:block; }
-  .doc-preview{ background:#fff; border:2px solid var(--line); padding:28px 30px; font-family:var(--sans); font-size:15px; white-space:pre-wrap; line-height:1.6; max-height:560px; overflow-y:auto; border-radius:8px; color:#111; }
+  .doc-preview{ background:#fff; border:2px solid var(--line); padding:28px 30px; font-family:var(--sans); font-size:15px; white-space:pre-wrap; line-height:1.6; max-height:560px; overflow-y:auto; border-radius:8px; color:#111; cursor:text; }
+  .doc-preview:focus{ outline:3px solid var(--blue-bright); outline-offset:1px; border-color:var(--blue-bright); }
   mark{ background:#cfe0fb; color:#0d2b57; padding:0 2px; border-radius:2px; }
   .tabs{ display:flex; gap:8px; margin-bottom:14px; }
   .tab{ font-family:var(--sans); font-size:16px; font-weight:700; padding:12px 20px; border:2px solid var(--line); background:#fff; cursor:pointer; border-radius:8px 8px 0 0; color:var(--muted); }
@@ -161,8 +162,9 @@
         <div class="tab active" data-tab="resume">Resume</div>
         <div class="tab" data-tab="cover">Cover Letter</div>
       </div>
-      <div id="pane-resume" class="doc-preview"></div>
-      <div id="pane-cover" class="doc-preview" style="display:none;"></div>
+      <p class="hint" style="margin:-6px 0 10px;">✎ Click into the text below and edit it directly — fix a word, tighten a line, whatever you want. Your download buttons use exactly what's shown here.</p>
+      <div id="pane-resume" class="doc-preview" contenteditable="true" spellcheck="true"></div>
+      <div id="pane-cover" class="doc-preview" contenteditable="true" spellcheck="true" style="display:none;"></div>
       <div class="dl-row" id="dl-resume">
         <button data-fmt="pdf" data-doc="resume">⬇ PDF</button>
         <button data-fmt="word" data-doc="resume">⬇ Word</button>
@@ -176,7 +178,7 @@
 
       <details class="adjust">
         <summary>Not quite right? Adjust your skills</summary>
-        <p class="hint" style="margin-top:10px;">We only checked skills that showed up in what you typed about your jobs. Tap any more that genuinely apply — the resume updates right away. Don't tap ones you don't actually have.</p>
+        <p class="hint" style="margin-top:10px;">We only checked skills that showed up in what you typed about your jobs. Tap any more that genuinely apply — the resume updates right away. Don't tap ones you don't actually have. Heads up: this rebuilds the text above, so it'll overwrite any manual edits you made directly in it — adjust skills first, edit the wording last.</p>
         <div class="match-pct" id="match-pct">0%</div>
         <div class="match-bar-wrap"><div class="match-bar" id="match-bar"></div></div>
         <div class="kw-wrap" id="kw-wrap"></div>
@@ -688,6 +690,14 @@ document.getElementById('make-btn').addEventListener('click', ()=>{
   regenerate();
   saveProfile();
   document.getElementById('output').scrollIntoView({behavior:'smooth'});
+});
+
+// Keep the downloadable text in sync with direct edits made in the preview.
+document.getElementById('pane-resume').addEventListener('input', (e)=>{
+  window.__resumeText = e.target.innerText.replace(/ /g, ' ');
+});
+document.getElementById('pane-cover').addEventListener('input', (e)=>{
+  window.__coverText = e.target.innerText.replace(/ /g, ' ');
 });
 
 // tabs
